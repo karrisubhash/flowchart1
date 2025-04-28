@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flowchart Builder</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 10px;
+      background-color:skyblue; 
+    }
+    h1 { text-align: center; }
+
+    .toolbar {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    select, button {
+      margin: 5px;
+      padding: 5px 10px;
+    }
+
+    #canvas {
+      position: relative;
+      width: 100%;
+      height: 900px;
+      border:  2px dashed  #aaa;
+      background:blanchedalmond;
+      overflow: hidden;
+    }
+
+    .shape {
+      position: absolute;
+      padding: 20px;
+      background: white;
+      border: 2px solid #333;
+      cursor: move;
+      user-select: none;
+      text-align: center;
+    }
+
+    .rectangle {
+      border-radius: 8px;
+    }
+
+    .diamond {
+      transform: rotate(45deg);
+      width: 100px;
+      height: 100px;
+      padding: 0;
+      line-height: 100px;
+    }
+
+    .circle {
+      border-radius: 50%;
+      width: 100px;
+      height: 100px;
+      line-height: 100px;
+      padding: 0;
+    }
+
+    .trapezium {
+       
+      clip-path: polygon(25% 0%, 80% 0%, 100% 100%, 0% 100%);
+      
+    }
+
+    .parallelogram {
+      clip-path: polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%);
+    }
+
+    .hexagon {
+      clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    }
+
+    .square {
+      width: 100px;
+      height: 100px;
+      line-height: 100px;
+      padding: 0;
+    }
+
+    .selected {
+      border-color: red;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Flowchart Builder</h1>
+  <div class="toolbar">
+    <select id="shapeType">
+      <option value="rectangle">Rectangle (Process)</option>
+      <option value="diamond">Diamond (Decision)</option>
+      <option value="circle">Circle (Start/End)</option>
+      <option value="trapezium">Trapezium (Input/Output)</option>
+      <option value="parallelogram">Parallelogram</option>
+      <option value="hexagon">Hexagon (Preparation)</option>
+      <option value="square">Square</option>
+    </select>
+    <button onclick="addShape()">Add Shape</button>
+    <button onclick="editShapeText()">Edit Text</button>
+    <button onclick="deleteShape()">Delete</button>
+    <button onclick="connectShapes()">Connect</button>
+    <button onclick="exportAsImage()">Export</button>
+    <button onclick="saveFlowchart()">Save</button>
+    <button onclick="loadFlowchart()">Load</button>
+  </div>
+
+  <div id="canvas" onclick="clearSelection()">
+    <canvas id="lineCanvas"></canvas>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script>
+    const canvasDiv = document.getElementById('canvas');
+    const lineCanvas = document.getElementById('lineCanvas');
+    const ctx = lineCanvas.getContext('2d');
+    let selectedShape = null;
+    let connecting = false;
+    let connectionStart = null;
+    let connections = [];
+
+    function resizeCanvas() {
+      lineCanvas.width = canvasDiv.clientWidth;
+      lineCanvas.height = canvasDiv.clientHeight;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function addShape() {
+      const type = document.getElementById('shapeType').value;
+      const shape = document.createElement('div');
+      shape.className = `shape ${type}`;
+      shape.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+      shape.style.top = '50px';
+      shape.style.left = '50px';
+      shape.dataset.id = Date.now().toString();
+
+      shape.addEventListener('mousedown', (e) => {
+        selectShape(shape);
+        dragStart(e, shape);
+      });
+
+      canvasDiv.appendChild(shape);
+    }
+
+    function selectShape(shape) {
+      if (selectedShape) selectedShape.classList.remove('selected');
+      selectedShape = shape;
+      selectedShape.classList.add('selected');
+    }
+
+    function clearSelection() {
+      if (selectedShape) selectedShape.classList.remove('selected');
+      selectedShape = null;
+    }
+
+    function editShapeText() {
+      if (!selectedShape) return alert("Select a shape first!");
+      const newText = prompt("Enter new text:", selectedShape.textContent);
+      if (newText !== null) selectedShape.textContent = newText;
+    }
+
+    function deleteShape() {
+      if (!selectedShape) return alert("Select a shape to delete.");
+      canvasDiv.removeChild(selectedShape);
+      connections = connections.filter(c =>
+        c.from !== selectedShape.dataset.id && c.to !== selectedShape.dataset.id
+      );
+      selectedShape = null;
+      drawConnections();
+    }
+
+    function dragStart(e, shape) {
+      e.preventDefault();
+      let offsetX = e.clientX - shape.offsetLeft;
+      let offsetY = e.clientY - shape.offsetTop;
+
+      function onMouseMove(e) {
+        shape.style.left = `${e.clientX - offsetX}px`;
+        shape.style.top = `${e.clientY - offsetY}px`;
+        drawConnections();
+      }
+
+      function onMouseUp() {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function connectShapes() {
+      if (!selectedShape) return alert("Select a shape to start connection.");
+      connecting = true;
+      connectionStart = selectedShape;
+      alert("Now click on another shape to connect.");
+      canvasDiv.querySelectorAll('.shape').forEach(shape => {
+        shape.onclick = () => {
+          if (!connecting || shape === connectionStart) return;
+          connections.push({ from: connectionStart.dataset.id, to: shape.dataset.id });
+          connecting = false;
+          drawConnections();
+          clearSelection();
+        };
+      });
+    }
+
+    function drawConnections() {
+      ctx.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
+      connections.forEach(conn => {
+        const fromEl = document.querySelector(`[data-id='${conn.from}']`);
+        const toEl = document.querySelector(`[data-id='${conn.to}']`);
+        if (!fromEl || !toEl) return;
+
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const parentRect = canvasDiv.getBoundingClientRect();
+
+        const x1 = fromRect.left + fromRect.width / 2 - parentRect.left;
+        const y1 = fromRect.top + fromRect.height / 2 - parentRect.top;
+        const x2 = toRect.left + toRect.width / 2 - parentRect.left;
+        const y2 = toRect.top + toRect.height / 2 - parentRect.top;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
+
+    function exportAsImage() {
+      html2canvas(canvasDiv).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'flowchart.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    }
+
+    function saveFlowchart() {
+      const shapes = [];
+      canvasDiv.querySelectorAll('.shape').forEach(shape => {
+        shapes.push({
+          id: shape.dataset.id,
+          className: shape.className,
+          text: shape.textContent,
+          top: shape.style.top,
+          left: shape.style.left
+        });
+      });
+      localStorage.setItem('shapes', JSON.stringify(shapes));
+      localStorage.setItem('connections', JSON.stringify(connections));
+      alert('Flowchart saved!');
+    }
+
+    function loadFlowchart() {
+      canvasDiv.querySelectorAll('.shape').forEach(shape => shape.remove());
+      connections = JSON.parse(localStorage.getItem('connections') || '[]');
+      const shapes = JSON.parse(localStorage.getItem('shapes') || '[]');
+      shapes.forEach(data => {
+        const shape = document.createElement('div');
+        shape.className = data.className;
+        shape.textContent = data.text;
+        shape.style.top = data.top;
+        shape.style.left = data.left;
+        shape.dataset.id = data.id;
+        shape.addEventListener('mousedown', (e) => {
+          selectShape(shape);
+          dragStart(e, shape);
+        });
+        canvasDiv.appendChild(shape);
+      });
+      drawConnections();
+      alert('Flowchart loaded!');
+    }
+  </script>
+</body>
+</html>
